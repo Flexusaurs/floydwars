@@ -41,7 +41,6 @@ type CardEntity struct {
 type PlayerEntity struct {
 	ID        string
 	hand      []CardEntity
-	deck      []CardEntity
 	itemCards []CardEntity
 }
 
@@ -50,6 +49,8 @@ type GameState struct {
 	TurnPlayerID  string
 	Phase         Phase
 	PendingAttack *AttackContext
+	FighterDeck   []CardEntity
+	ItemDeck      []CardEntity
 }
 
 type AttackContext struct {
@@ -90,22 +91,6 @@ func removeCard(hand []CardEntity, id string) []CardEntity {
 	return hand
 }
 
-func DrawCard(p *PlayerEntity) (*CardEntity, error) {
-	if len(p.deck) == 0 {
-		return &CardEntity{}, errors.New("deck is empty")
-	}
-
-	card := p.deck[0]
-	p.deck = p.deck[1:]
-	if card.CardClass == "Item" {
-		p.itemCards = append(p.itemCards, card)
-	} else {
-		p.hand = append(p.hand, card)
-	}
-
-	return &card, nil
-}
-
 func (p *PlayerEntity) ShuffleHand() {
 	rand.NewSource(time.Now().UnixNano())
 	n := len(p.hand)
@@ -115,13 +100,13 @@ func (p *PlayerEntity) ShuffleHand() {
 	}
 }
 
-func (p *PlayerEntity) ShuffleAndRedrawHand() {
+func (p *PlayerEntity) ShuffleAndRedrawHand(gs *GameState) {
 	count := len(p.hand)
 	p.ShuffleHand()
 	p.hand = []CardEntity{} // clear
 	for i := 0; i < count; i++ {
-		card := p.DrawCard()
-		if card != nil {
+		card, err := DrawFighterCard(gs, p)
+		if err == nil && card != nil {
 			p.hand = append(p.hand, *card)
 		}
 	}
@@ -223,7 +208,7 @@ func resolveCardSkills(card *CardEntity, trigger string, gs *GameState) {
 	case "ShuffleHand":
 		player.ShuffleHand()
 	case "Draw2":
-		drawCards(player, 2)
+		DrawFighterCard(gs, player)
 		// Add more skills here
 	}
 }
@@ -333,4 +318,26 @@ func ResolveCombat(gs *GameState, input AttackContext) error {
 	}
 
 	return nil
+}
+
+// Draws a fighter card from the shared deck
+func DrawFighterCard(gs *GameState, p *PlayerEntity) (*CardEntity, error) {
+	if len(gs.FighterDeck) == 0 {
+		return nil, errors.New("fighter deck is empty")
+	}
+	card := gs.FighterDeck[0]
+	gs.FighterDeck = gs.FighterDeck[1:]
+	p.hand = append(p.hand, card)
+	return &card, nil
+}
+
+// Draws an item card from the shared deck
+func DrawItemCard(gs *GameState, p *PlayerEntity) (*CardEntity, error) {
+	if len(gs.ItemDeck) == 0 {
+		return nil, errors.New("item deck is empty")
+	}
+	card := gs.ItemDeck[0]
+	gs.ItemDeck = gs.ItemDeck[1:]
+	p.itemCards = append(p.itemCards, card)
+	return &card, nil
 }
